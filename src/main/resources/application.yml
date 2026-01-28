@@ -2,9 +2,6 @@ server:
   port: 9000
   forward-headers-strategy: framework
 
-app:
-  frontend-url: http://localhost:5173
-
 spring:
   application:
     name: authvs-server

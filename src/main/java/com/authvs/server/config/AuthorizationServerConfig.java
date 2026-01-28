@@ -44,16 +44,25 @@ public class AuthorizationServerConfig {
     @Order(1)
     public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http,
                                                                       CustomOidcUserInfoService customOidcUserInfoService) throws Exception {
-        OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
+        OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
+                new OAuth2AuthorizationServerConfigurer();
 
-        http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
-                .oidc(oidc -> oidc
-                        .userInfoEndpoint(userInfo -> userInfo
-                                .userInfoMapper(customOidcUserInfoService)
-                        )
+        http.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
+                .with(authorizationServerConfigurer, (configurer) ->
+                        configurer
+                                .oidc(oidc -> oidc
+                                        .userInfoEndpoint(userInfo -> userInfo
+                                                .userInfoMapper(customOidcUserInfoService)
+                                        )
+                                )
+                                .authorizationEndpoint(authorizationEndpoint ->
+                                        authorizationEndpoint.consentPage("/consent"))
                 );
 
         http
+                .authorizeHttpRequests((authorize) ->
+                        authorize.anyRequest().authenticated()
+                )
                 .exceptionHandling((exceptions) -> exceptions
                         .defaultAuthenticationEntryPointFor(
                                 new LoginUrlAuthenticationEntryPoint("/login"),
@@ -62,10 +71,6 @@ public class AuthorizationServerConfig {
                 )
                 .oauth2ResourceServer((resourceServer) -> resourceServer
                         .jwt(Customizer.withDefaults()));
-
-        http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
-                .authorizationEndpoint(authorizationEndpoint ->
-                        authorizationEndpoint.consentPage("/consent"));
 
         http.cors(AbstractHttpConfigurer::disable);
 
