@@ -115,7 +115,11 @@ async function handleSubmit() {
     })
     const data = await res.json()
     if (data.code === 200) {
-      const redirectUrl = data.data
+      const { token, redirectUrl } = data.data
+      if (token) {
+        localStorage.setItem('auth_token', token)
+      }
+      
       if (redirectUrl) {
         window.location.href = redirectUrl
       } else {

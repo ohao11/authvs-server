@@ -44,3 +44,51 @@ CREATE TABLE IF NOT EXISTS `users` (
   KEY `idx_phone` (`phone`),
   KEY `idx_user_type` (`user_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
+
+-- OAuth2 授权表
+CREATE TABLE IF NOT EXISTS `oauth2_authorization` (
+  `id` VARCHAR(100) PRIMARY KEY,
+  `registered_client_id` VARCHAR(100) NOT NULL,
+  `principal_name` VARCHAR(200) NOT NULL,
+  `authorization_grant_type` VARCHAR(100) NOT NULL,
+  `authorized_scopes` VARCHAR(1000),
+  `attributes` TEXT,
+  `state` VARCHAR(500),
+  `authorization_code_value` LONGBLOB,
+  `authorization_code_issued_at` TIMESTAMP NULL,
+  `authorization_code_expires_at` TIMESTAMP NULL,
+  `authorization_code_metadata` TEXT,
+  `access_token_value` LONGBLOB,
+  `access_token_issued_at` TIMESTAMP NULL,
+  `access_token_expires_at` TIMESTAMP NULL,
+  `access_token_metadata` TEXT,
+  `access_token_type` VARCHAR(100),
+  `access_token_scopes` VARCHAR(1000),
+  `refresh_token_value` LONGBLOB,
+  `refresh_token_issued_at` TIMESTAMP NULL,
+  `refresh_token_expires_at` TIMESTAMP NULL,
+  `refresh_token_metadata` TEXT,
+  `oidc_id_token_value` LONGBLOB,
+  `oidc_id_token_issued_at` TIMESTAMP NULL,
+  `oidc_id_token_expires_at` TIMESTAMP NULL,
+  `oidc_id_token_metadata` TEXT,
+  `oidc_id_token_claims` TEXT,
+  `user_code_value` LONGBLOB,
+  `user_code_issued_at` TIMESTAMP NULL,
+  `user_code_expires_at` TIMESTAMP NULL,
+  `user_code_metadata` TEXT,
+  `device_code_value` LONGBLOB,
+  `device_code_issued_at` TIMESTAMP NULL,
+  `device_code_expires_at` TIMESTAMP NULL,
+  `device_code_metadata` TEXT,
+  KEY `idx_registered_client_id` (`registered_client_id`),
+  KEY `idx_principal_name` (`principal_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OAuth2授权表';
+
+-- OAuth2 授权同意表
+CREATE TABLE IF NOT EXISTS `oauth2_authorization_consent` (
+  `registered_client_id` VARCHAR(100) NOT NULL,
+  `principal_name` VARCHAR(200) NOT NULL,
+  `authorities` VARCHAR(1000),
+  PRIMARY KEY (`registered_client_id`, `principal_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OAuth2授权同意表';

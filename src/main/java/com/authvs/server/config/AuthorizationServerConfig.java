@@ -10,11 +10,18 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcOperations;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationConsentService;
+import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationService;
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService;
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
@@ -22,6 +29,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 
+import javax.sql.DataSource;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
@@ -32,10 +40,6 @@ import java.util.UUID;
 @EnableWebSecurity
 public class AuthorizationServerConfig {
 
-    /**
-     * 配置 Authorization Server 的 SecurityFilterChain
-     * 处理 OIDC 协议端点：/oauth2/authorize, /oauth2/token, /userinfo 等
-     */
     @Bean
     @Order(1)
     public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http,
@@ -50,33 +54,24 @@ public class AuthorizationServerConfig {
                 );
 
         http
-                // 当未认证时，重定向到登录页面
                 .exceptionHandling((exceptions) -> exceptions
                         .defaultAuthenticationEntryPointFor(
                                 new LoginUrlAuthenticationEntryPoint("/login"),
                                 new MediaTypeRequestMatcher(MediaType.TEXT_HTML)
                         )
                 )
-                // 处理用户信息端点
                 .oauth2ResourceServer((resourceServer) -> resourceServer
                         .jwt(Customizer.withDefaults()));
 
-        // 自定义授权确认页面
         http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
-            .authorizationEndpoint(authorizationEndpoint ->
-                authorizationEndpoint.consentPage("/consent"));
+                .authorizationEndpoint(authorizationEndpoint ->
+                        authorizationEndpoint.consentPage("/consent"));
 
-        // 启用 CORS
-        // http.cors(Customizer.withDefaults());
-        // 使用全局 CorsFilter 处理
         http.cors(AbstractHttpConfigurer::disable);
 
         return http.build();
     }
 
-    /**
-     * 配置 JWK Source，用于签名 Access Token 和 ID Token
-     */
     @Bean
     public JWKSource<SecurityContext> jwkSource() {
         KeyPair keyPair = generateRsaKey();
@@ -90,17 +85,11 @@ public class AuthorizationServerConfig {
         return new ImmutableJWKSet<>(jwkSet);
     }
 
-    /**
-     * 配置 JwtDecoder，用于解析 JWT（Authorization Server 需要自解析）
-     */
     @Bean
     public JwtDecoder jwtDecoder(JWKSource<SecurityContext> jwkSource) {
         return OAuth2AuthorizationServerConfiguration.jwtDecoder(jwkSource);
     }
 
-    /**
-     * 配置 Authorization Server 设置
-     */
     @Bean
     public AuthorizationServerSettings authorizationServerSettings() {
         return AuthorizationServerSettings.builder()
@@ -114,9 +103,23 @@ public class AuthorizationServerConfig {
                 .build();
     }
 
-    /**
-     * 生成 RSA 密钥对
-     */
+    @Bean
+    public JdbcOperations jdbcOperations(DataSource dataSource) {
+        return new JdbcTemplate(dataSource);
+    }
+
+    @Bean
+    public OAuth2AuthorizationService authorizationService(JdbcOperations jdbcOperations,
+                                                           RegisteredClientRepository registeredClientRepository) {
+        return new JdbcOAuth2AuthorizationService(jdbcOperations, registeredClientRepository);
+    }
+
+    @Bean
+    public OAuth2AuthorizationConsentService authorizationConsentService(JdbcOperations jdbcOperations,
+                                                                         RegisteredClientRepository registeredClientRepository) {
+        return new JdbcOAuth2AuthorizationConsentService(jdbcOperations, registeredClientRepository);
+    }
+
     private static KeyPair generateRsaKey() {
         KeyPair keyPair;
         try {

@@ -2,9 +2,7 @@
   <div class="container">
     <div class="header">
       <h1>用户详情</h1>
-      <form action="/logout" method="post">
-        <button type="submit" class="btn-logout">退出登录</button>
-      </form>
+      <button @click="handleLogout" class="btn-logout">退出登录</button>
     </div>
 
     <div v-if="loading" class="text-center">
@@ -49,7 +47,9 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
+const router = useRouter()
 const user = ref(null)
 const loading = ref(true)
 const error = ref('')
@@ -65,7 +65,11 @@ async function loadUser() {
   loading.value = true
   error.value = ''
   try {
-    const res = await fetch('/api/user/profile')
+    const res = await fetch('/api/user/profile', {
+      headers: {
+        'X-Auth-Token': localStorage.getItem('auth_token') || ''
+      }
+    })
     const data = await res.json()
     if (data.code === 200 && data.data) {
       user.value = data.data
@@ -78,6 +82,16 @@ async function loadUser() {
   } finally {
     loading.value = false
   }
+}
+
+async function handleLogout() {
+  localStorage.removeItem('auth_token')
+  try {
+    await fetch('/logout', { method: 'POST' })
+  } catch (e) {
+    console.error(e)
+  }
+  router.push('/login')
 }
 
 onMounted(() => {
