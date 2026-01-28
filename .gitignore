@@ -46,3 +46,6 @@ mvnw.cmd
 # OS
 .DS_Store
 Thumbs.db
+
+fe/node_modules/
+fe/dist/

@@ -1,11 +1,19 @@
 package com.authvs.server.config;
 
+import com.authvs.server.handler.RestAccessDeniedHandler;
+import com.authvs.server.handler.RestAuthenticationEntryPoint;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.ProviderManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -13,6 +21,12 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration
 @EnableWebSecurity
 public class DefaultSecurityConfig {
+
+    @Autowired
+    private RestAuthenticationEntryPoint restAuthenticationEntryPoint;
+
+    @Autowired
+    private RestAccessDeniedHandler restAccessDeniedHandler;
 
     /**
      * 默认安全过滤器链，处理普通 Web 请求（如登录页面）
@@ -22,15 +36,36 @@ public class DefaultSecurityConfig {
     public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
         http
             .authorizeHttpRequests((authorize) -> authorize
-                .requestMatchers("/assets/**", "/webjars/**", "/login").permitAll()
-                .anyRequest().authenticated()
+                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers("/assets/**", "/webjars/**", "/login", "/favicon.ico", "/error", "/", "/api/captcha", "/api/login").permitAll()
+                        .anyRequest().authenticated()
+                )
+            // 异常处理
+            .exceptionHandling(exceptions -> exceptions
+                .authenticationEntryPoint(restAuthenticationEntryPoint)
+                .accessDeniedHandler(restAccessDeniedHandler)
             )
-            // 表单登录，提供默认登录页面
-            .formLogin(Customizer.withDefaults())
+            // 禁用 CSRF (前后端分离通常使用 Token，或者如果使用 Session 需配合 Cookie)
+            // 这里暂时保持开启或根据需求禁用。如果是纯 API 分离，通常禁用 CSRF 或通过 Header 传递。
+            // 为了简化开发和避免 CSRF Token 问题，暂时禁用。
+            .csrf(AbstractHttpConfigurer::disable)
             // 启用 CORS
-            .cors(Customizer.withDefaults());
+            // .cors(cors -> cors.configurationSource(corsConfigurationSource));
+            // 使用全局 CorsFilter (Ordered.HIGHEST_PRECEDENCE) 处理跨域，此处不再重复配置
+            .cors(AbstractHttpConfigurer::disable);
 
         return http.build();
+    }
+
+    /**
+     * 暴露 AuthenticationManager，用于自定义登录接口
+     */
+    @Bean
+    public AuthenticationManager authenticationManager(UserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
+        DaoAuthenticationProvider authenticationProvider = new DaoAuthenticationProvider();
+        authenticationProvider.setUserDetailsService(userDetailsService);
+        authenticationProvider.setPasswordEncoder(passwordEncoder);
+        return new ProviderManager(authenticationProvider);
     }
 
     /**

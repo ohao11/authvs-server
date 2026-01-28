@@ -49,7 +49,7 @@ class DataInitializerTest {
             client.setGrantTypes("authorization_code,refresh_token,client_credentials");
             client.setRedirectUris("http://127.0.0.1:8080/login/oauth2/code/oidc-client,https://oauth.pstmn.io/v1/callback");
             client.setPostLogoutRedirectUris("http://127.0.0.1:8080");
-            client.setScopes("openid,profile,email");
+            client.setScopes("openid,profile,email,phone");
             client.setAutoApprove(0); // Require consent
             client.setClientType(1); // Web
             client.setEnabled(1);

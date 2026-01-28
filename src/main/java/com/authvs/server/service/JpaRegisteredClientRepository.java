@@ -14,9 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -118,7 +116,7 @@ public class JpaRegisteredClientRepository implements RegisteredClientRepository
         // So if auto_approve == 1, requireAuthorizationConsent = false.
         boolean requireConsent = oauthClient.getAutoApprove() == null || oauthClient.getAutoApprove() == 0;
         clientSettingsBuilder.requireAuthorizationConsent(requireConsent);
-        
+
         builder.clientSettings(clientSettingsBuilder.build());
 
         return builder.build();

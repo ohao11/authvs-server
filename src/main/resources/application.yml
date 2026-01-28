@@ -1,5 +1,9 @@
 server:
   port: 9000
+  forward-headers-strategy: framework
+
+app:
+  frontend-url: http://localhost:5173
 
 spring:
   application:
@@ -12,6 +16,13 @@ spring:
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: GMT+8
+  data:
+    redis:
+      host: localhost
+      port: 16379
+      database: 0
+      password: 123456
+      timeout: 10000
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
@@ -22,5 +33,6 @@ mybatis-plus:
 logging:
   level:
     org.springframework.security: INFO
+    org.springframework.security.web.FilterChainProxy: DEBUG
     org.springframework.security.oauth2: INFO
     com.authvs.server: DEBUG

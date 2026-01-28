@@ -35,7 +35,7 @@ Server will start on port `9000`.
 ### Step 1: Get Authorization Code
 Open browser and visit:
 ```
-http://localhost:9000/oauth2/authorize?response_type=code&client_id=oidc-client&scope=openid profile email&redirect_uri=https://oauth.pstmn.io/v1/callback
+http://localhost:9000/oauth2/authorize?response_type=code&client_id=web-portal&scope=openid profile email&redirect_uri=http://localhost:3000/callback
 ```
 1. Redirects to login page.
 2. Login with `admin` / `password`.
@@ -52,7 +52,7 @@ curl -X POST http://localhost:9000/oauth2/token \
 -H "Content-Type: application/x-www-form-urlencoded" \
 -d "grant_type=authorization_code" \
 -d "code=CODE" \
--d "redirect_uri=https://oauth.pstmn.io/v1/callback"
+-d "redirect_uri=http://localhost:3000/callback"
 ```
 *Note: `b2lkYy1jbGllbnQ6c2VjcmV0` is Base64 of `oidc-client:secret`.*
 
