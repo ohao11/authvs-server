@@ -6,4 +6,5 @@ import lombok.Data;
 public class MfaLoginParam {
     private String mfaId;
     private String code;
+    private String type; // TOTP, SMS, EMAIL
 }

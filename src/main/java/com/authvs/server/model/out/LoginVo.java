@@ -10,4 +10,5 @@ public class LoginVo {
     private String redirectUrl;
     private String state; // LOGGED_IN, MFA_REQUIRED
     private String mfaId;
+    private java.util.List<MfaOptionVo> options;
 }

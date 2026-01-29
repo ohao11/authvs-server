@@ -34,6 +34,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.RequestContextHolder;
 
+import cn.hutool.core.util.RandomUtil;
+import com.authvs.server.model.in.MfaSendParam;
+import com.authvs.server.model.out.MfaOptionVo;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -79,20 +84,38 @@ public class LoginController {
             UsernamePasswordAuthenticationToken token = UsernamePasswordAuthenticationToken.unauthenticated(username, password);
             Authentication authentication = authenticationManager.authenticate(token);
 
-            // 2. 检查是否开启 MFA
+            // 2. 检查是否有 MFA 选项
             User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, username));
-            if (user != null && user.getTotpEnabled() != null && user.getTotpEnabled() == 1) {
+            
+            List<MfaOptionVo> options = new ArrayList<>();
+            if (user != null) {
+                // TOTP
+                if (user.getTotpEnabled() != null && user.getTotpEnabled() == 1) {
+                    options.add(new MfaOptionVo("TOTP", "Google 验证器", null));
+                }
+                // EMAIL
+                if (StringUtils.hasText(user.getEmail())) {
+                    options.add(new MfaOptionVo("EMAIL", "邮箱验证", maskEmail(user.getEmail())));
+                }
+                // SMS
+                if (StringUtils.hasText(user.getPhone())) {
+                    options.add(new MfaOptionVo("SMS", "手机短信", maskPhone(user.getPhone())));
+                }
+            }
+
+            if (!options.isEmpty()) {
                 String mfaId = UUID.randomUUID().toString();
                 // 存储临时登录态 5分钟有效
                 redisTemplate.opsForValue().set("mfa:login:" + mfaId, username, 5, TimeUnit.MINUTES);
-
+                
                 return R.ok(LoginVo.builder()
                         .state("MFA_REQUIRED")
                         .mfaId(mfaId)
+                        .options(options)
                         .build());
             }
 
-            // 3. 未开启 MFA，直接登录成功
+            // 3. 无 MFA，直接登录成功
             return processLoginSuccess(authentication, request, response);
 
         } catch (AuthenticationException e) {
@@ -107,6 +130,7 @@ public class LoginController {
                                HttpServletResponse response) {
         String mfaId = mfaLoginParam.getMfaId();
         String code = mfaLoginParam.getCode();
+        String type = mfaLoginParam.getType();
 
         String username = redisTemplate.opsForValue().get("mfa:login:" + mfaId);
         if (!StringUtils.hasText(username)) {
@@ -118,7 +142,21 @@ public class LoginController {
             return R.fail("用户不存在");
         }
 
-        if (!TotpUtil.authorize(user.getTotpSecret(), code)) {
+        boolean verified = false;
+        if ("TOTP".equalsIgnoreCase(type)) {
+            if (user.getTotpEnabled() != null && user.getTotpEnabled() == 1) {
+                verified = TotpUtil.authorize(user.getTotpSecret(), code);
+            }
+        } else if ("SMS".equalsIgnoreCase(type) || "EMAIL".equalsIgnoreCase(type)) {
+            String redisKey = "mfa:code:" + type + ":" + mfaId;
+            String savedCode = redisTemplate.opsForValue().get(redisKey);
+            if (StringUtils.hasText(savedCode) && savedCode.equals(code)) {
+                verified = true;
+                redisTemplate.delete(redisKey);
+            }
+        }
+
+        if (!verified) {
             return R.fail("验证码错误");
         }
 
@@ -160,5 +198,46 @@ public class LoginController {
                 .token(sessionId)
                 .redirectUrl(redirectUrl)
                 .build());
+    }
+
+    @PostMapping("/api/login/mfa/send")
+    public R<Void> sendMfaCode(@RequestBody MfaSendParam param) {
+        String mfaId = param.getMfaId();
+        String type = param.getType(); // SMS, EMAIL
+
+        String username = redisTemplate.opsForValue().get("mfa:login:" + mfaId);
+        if (!StringUtils.hasText(username)) {
+            return R.fail("会话已过期");
+        }
+        
+        // 生成验证码
+        String code = RandomUtil.randomNumbers(6);
+        log.info("MFA验证码 [{} - {}]: {}", username, type, code);
+
+        // 存入 Redis 5分钟有效
+        String redisKey = "mfa:code:" + type + ":" + mfaId;
+        redisTemplate.opsForValue().set(redisKey, code, 5, TimeUnit.MINUTES);
+
+        // TODO: 实际发送短信或邮件
+        
+        return R.ok();
+    }
+
+    private String maskEmail(String email) {
+        if (!StringUtils.hasText(email)) {
+            return "";
+        }
+        int atIndex = email.indexOf('@');
+        if (atIndex <= 1) {
+            return email;
+        }
+        return email.substring(0, 2) + "***" + email.substring(atIndex);
+    }
+
+    private String maskPhone(String phone) {
+        if (!StringUtils.hasText(phone) || phone.length() < 7) {
+            return phone;
+        }
+        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
     }
 }

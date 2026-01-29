@@ -1,6 +1,7 @@
 <template>
-  <div class="login-container">
-    <div class="login-header">
+  <div class="login-wrapper">
+    <div class="login-container">
+      <div class="login-header">
       <h1>AuthVs 登录</h1>
     </div>
 
@@ -57,31 +58,77 @@
         </div>
       </div>
 
-      <div v-else-if="step === 'mfa'">
-        <div class="form-group">
-          <label for="mfaCode">双因子验证码</label>
-          <input
-            id="mfaCode"
-            v-model="form.mfaCode"
-            class="form-control"
-            type="text"
-            placeholder="请输入6位验证码"
-            maxlength="6"
-            required
-            autofocus
-          />
-          <div class="hint">请输入您 Google Authenticator 中的 6 位数字</div>
+      <div v-else-if="step === 'select'">
+        <div class="form-group text-center">
+          <label class="select-label">请选择验证方式</label>
+        </div>
+        <div class="mfa-options-list">
+          <div 
+            v-for="opt in mfaOptions" 
+            :key="opt.type" 
+            class="mfa-option-item"
+            @click="selectMfaOption(opt)"
+          >
+            <div class="mfa-icon">
+              <span v-if="opt.type === 'TOTP'">🔐</span>
+              <span v-else-if="opt.type === 'SMS'">📱</span>
+              <span v-else-if="opt.type === 'EMAIL'">📧</span>
+              <span v-else>🛡️</span>
+            </div>
+            <div class="mfa-info">
+              <div class="mfa-label">{{ opt.label }}</div>
+              <div v-if="opt.target" class="mfa-target">{{ opt.target }}</div>
+            </div>
+            <div class="mfa-arrow">›</div>
+          </div>
         </div>
       </div>
 
-      <button class="btn" type="submit" :disabled="submitting">
+      <div v-else-if="step === 'mfa'">
+        <div class="form-group">
+          <label for="mfaCode">{{ mfaLabel }}</label>
+          <div class="input-group">
+            <input
+              id="mfaCode"
+              v-model="form.mfaCode"
+              class="form-control"
+              type="text"
+              placeholder="请输入6位验证码"
+              maxlength="6"
+              required
+              autofocus
+            />
+            <button 
+              v-if="selectedMfaType !== 'TOTP' && countdown > 0" 
+              type="button" 
+              class="btn-sm btn-disabled"
+              disabled
+            >
+              {{ countdown }}s
+            </button>
+            <button 
+              v-else-if="selectedMfaType !== 'TOTP'" 
+              type="button" 
+              class="btn-sm"
+              @click="sendMfaCode"
+              :disabled="sending"
+            >
+              {{ sending ? '发送中...' : '重新发送' }}
+            </button>
+          </div>
+          <div class="hint">{{ mfaHint }}</div>
+        </div>
+      </div>
+
+      <button v-if="step !== 'select'" class="btn" type="submit" :disabled="submitting">
         {{ submitting ? (step === 'login' ? "登录中..." : "验证中...") : (step === 'login' ? "登 录" : "验 证") }}
       </button>
       
-      <div v-if="step === 'mfa'" class="text-center mt-2">
+      <div v-if="step === 'mfa' || step === 'select'" class="text-center mt-2">
         <a href="#" @click.prevent="resetLogin">返回登录</a>
       </div>
     </form>
+  </div>
   </div>
 </template>
 
@@ -91,8 +138,15 @@ import { useRouter } from 'vue-router'
 
 const router = useRouter()
 
-const step = ref('login') // login, mfa
+const step = ref('login') // login, select, mfa
 const mfaId = ref('')
+const mfaOptions = ref([])
+const selectedMfaType = ref('')
+const mfaLabel = ref('')
+const mfaHint = ref('')
+const countdown = ref(0)
+const sending = ref(false)
+let timer = null
 
 const form = reactive({
   username: '',
@@ -106,8 +160,10 @@ const captchaImg = ref('')
 const error = ref('')
 const submitting = ref(false)
 
-async function refreshCaptcha() {
-  error.value = ''
+async function refreshCaptcha(clearError = true) {
+  if (clearError !== false) {
+    error.value = ''
+  }
   try {
     const res = await fetch('/api/captcha', {
       method: 'POST',
@@ -136,6 +192,10 @@ function resetLogin() {
   form.captcha = ''
   form.mfaCode = ''
   error.value = ''
+  mfaOptions.value = []
+  selectedMfaType.value = ''
+  clearInterval(timer)
+  countdown.value = 0
   refreshCaptcha()
 }
 
@@ -154,19 +214,84 @@ async function handleLogin() {
   })
   const data = await res.json()
   if (data.code === 200) {
-    const { state, token, redirectUrl, mfaId: id } = data.data
+    const { state, token, redirectUrl, mfaId: id, options } = data.data
     
     if (state === 'MFA_REQUIRED') {
-      step.value = 'mfa'
       mfaId.value = id
       error.value = ''
+      
+      if (options && options.length > 0) {
+        if (options.length === 1) {
+          selectMfaOption(options[0])
+        } else {
+          step.value = 'select'
+          mfaOptions.value = options
+        }
+      } else {
+         // Fallback default
+         selectMfaOption({ type: 'TOTP', label: 'Google 验证器' })
+      }
     } else {
       handleSuccess(token, redirectUrl)
     }
   } else {
     error.value = data.message || '登录失败'
-    await refreshCaptcha()
+    await refreshCaptcha(false)
   }
+}
+
+function selectMfaOption(option) {
+  selectedMfaType.value = option.type
+  step.value = 'mfa'
+  form.mfaCode = ''
+  error.value = ''
+  
+  if (option.type === 'TOTP') {
+    mfaLabel.value = 'Google 验证码'
+    mfaHint.value = '请输入您 Google Authenticator 中的 6 位数字'
+  } else if (option.type === 'SMS') {
+    mfaLabel.value = '短信验证码'
+    mfaHint.value = `验证码已发送至 ${option.target}`
+    sendMfaCode()
+  } else if (option.type === 'EMAIL') {
+    mfaLabel.value = '邮箱验证码'
+    mfaHint.value = `验证码已发送至 ${option.target}`
+    sendMfaCode()
+  }
+}
+
+async function sendMfaCode() {
+  if (sending.value || countdown.value > 0) return
+  
+  sending.value = true
+  try {
+    const res = await fetch('/api/login/mfa/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mfaId: mfaId.value, type: selectedMfaType.value })
+    })
+    const data = await res.json()
+    if (data.code === 200) {
+      startCountdown()
+    } else {
+      error.value = data.message || '验证码发送失败'
+    }
+  } catch(e) {
+    error.value = '发送请求失败'
+  } finally {
+    sending.value = false
+  }
+}
+
+function startCountdown() {
+  countdown.value = 60
+  clearInterval(timer)
+  timer = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) {
+      clearInterval(timer)
+    }
+  }, 1000)
 }
 
 async function handleMfa() {
@@ -177,7 +302,8 @@ async function handleMfa() {
     },
     body: JSON.stringify({
       mfaId: mfaId.value,
-      code: form.mfaCode
+      code: form.mfaCode,
+      type: selectedMfaType.value
     })
   })
   const data = await res.json()
@@ -228,6 +354,14 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.login-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f0f2f5;
+}
+
 .login-container {
   background-color: #ffffff;
   padding: 40px;
@@ -341,5 +475,64 @@ a {
 
 a:hover {
   text-decoration: underline;
+}
+
+.select-label {
+  font-size: 16px;
+  color: #333;
+  font-weight: 500;
+}
+
+.mfa-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.mfa-option-item {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: #f9f9f9;
+}
+
+.mfa-option-item:hover {
+  background-color: #fff;
+  border-color: #4a90e2;
+  box-shadow: 0 2px 8px rgba(74, 144, 226, 0.15);
+  transform: translateY(-1px);
+}
+
+.mfa-icon {
+  font-size: 24px;
+  margin-right: 15px;
+  width: 32px;
+  text-align: center;
+}
+
+.mfa-info {
+  flex: 1;
+}
+
+.mfa-label {
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 2px;
+}
+
+.mfa-target {
+  font-size: 12px;
+  color: #888;
+}
+
+.mfa-arrow {
+  font-size: 20px;
+  color: #ccc;
+  font-weight: bold;
 }
 </style>
