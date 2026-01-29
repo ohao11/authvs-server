@@ -49,3 +49,5 @@ Thumbs.db
 
 fe/node_modules/
 fe/dist/
+
+**/application-local.yml

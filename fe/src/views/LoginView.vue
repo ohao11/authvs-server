@@ -124,6 +124,10 @@
         {{ submitting ? (step === 'login' ? "登录中..." : "验证中...") : (step === 'login' ? "登 录" : "验 证") }}
       </button>
       
+      <div v-if="step === 'mfa' && mfaOptions.length > 1" class="text-center mt-2">
+        <a href="#" @click.prevent="backToSelect">切换验证方式</a>
+      </div>
+
       <div v-if="step === 'mfa' || step === 'select'" class="text-center mt-2">
         <a href="#" @click.prevent="resetLogin">返回登录</a>
       </div>
@@ -197,6 +201,15 @@ function resetLogin() {
   clearInterval(timer)
   countdown.value = 0
   refreshCaptcha()
+}
+
+function backToSelect() {
+  step.value = 'select'
+  error.value = ''
+  form.mfaCode = ''
+  selectedMfaType.value = ''
+  clearInterval(timer)
+  countdown.value = 0
 }
 
 async function handleLogin() {
@@ -534,5 +547,50 @@ a:hover {
   font-size: 20px;
   color: #ccc;
   font-weight: bold;
+}
+
+.input-group {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.input-group .form-control {
+  flex: 1;
+  width: auto;
+}
+
+.btn-sm {
+  padding: 0 16px;
+  height: 42px; /* Match form-control height */
+  background-color: transparent;
+  color: #4a90e2;
+  border: 1px solid #4a90e2;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 100px;
+}
+
+.btn-sm:hover:not(:disabled) {
+  background-color: #f0f9ff;
+  box-shadow: 0 2px 4px rgba(74, 144, 226, 0.1);
+}
+
+.btn-sm:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn-sm:disabled, .btn-disabled {
+  color: #999;
+  border-color: #ddd;
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 </style>

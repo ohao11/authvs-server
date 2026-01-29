@@ -1,12 +1,19 @@
 package com.authvs.server.controller;
 
+import cn.hutool.core.util.RandomUtil;
 import com.authvs.server.entity.User;
 import com.authvs.server.mapper.UserMapper;
 import com.authvs.server.model.enums.CaptchaType;
 import com.authvs.server.model.in.LoginParam;
 import com.authvs.server.model.in.MfaLoginParam;
+import com.authvs.server.model.in.MfaSendParam;
 import com.authvs.server.model.out.LoginVo;
+import com.authvs.server.model.out.MfaOptionVo;
 import com.authvs.server.model.out.R;
+import com.authvs.server.service.EmailService;
+import com.authvs.server.service.SmsService;
+import com.authvs.server.service.VerificationRateLimiter;
+import com.authvs.server.util.RedisKeys;
 import com.authvs.server.util.TotpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -34,9 +41,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.RequestContextHolder;
 
-import cn.hutool.core.util.RandomUtil;
-import com.authvs.server.model.in.MfaSendParam;
-import com.authvs.server.model.out.MfaOptionVo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -51,6 +55,9 @@ public class LoginController {
     private final StringRedisTemplate redisTemplate;
     private final UserMapper userMapper;
     private final UserDetailsService userDetailsService;
+    private final EmailService emailService;
+    private final SmsService smsService;
+    private final VerificationRateLimiter rateLimiter;
 
     private final SecurityContextRepository securityContextRepository = new HttpSessionSecurityContextRepository();
     private final SecurityContextHolderStrategy securityContextHolderStrategy = SecurityContextHolder.getContextHolderStrategy();
@@ -66,7 +73,7 @@ public class LoginController {
         String captchaKey = loginParam.getCaptchaKey();
 
         // 0. 校验验证码
-        String redisKey = "captcha:" + CaptchaType.LOGIN.getType() + ":" + captchaKey;
+        String redisKey = RedisKeys.captcha(CaptchaType.LOGIN.getType(), captchaKey);
         String redisCaptcha = redisTemplate.opsForValue().get(redisKey);
 
         // 无论校验成功与否，删除 Redis 中的验证码，防止重放
@@ -86,7 +93,7 @@ public class LoginController {
 
             // 2. 检查是否有 MFA 选项
             User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, username));
-            
+
             List<MfaOptionVo> options = new ArrayList<>();
             if (user != null) {
                 // TOTP
@@ -106,8 +113,8 @@ public class LoginController {
             if (!options.isEmpty()) {
                 String mfaId = UUID.randomUUID().toString();
                 // 存储临时登录态 5分钟有效
-                redisTemplate.opsForValue().set("mfa:login:" + mfaId, username, 5, TimeUnit.MINUTES);
-                
+                redisTemplate.opsForValue().set(RedisKeys.mfaLogin(mfaId), username, 5, TimeUnit.MINUTES);
+
                 return R.ok(LoginVo.builder()
                         .state("MFA_REQUIRED")
                         .mfaId(mfaId)
@@ -132,7 +139,7 @@ public class LoginController {
         String code = mfaLoginParam.getCode();
         String type = mfaLoginParam.getType();
 
-        String username = redisTemplate.opsForValue().get("mfa:login:" + mfaId);
+        String username = redisTemplate.opsForValue().get(RedisKeys.mfaLogin(mfaId));
         if (!StringUtils.hasText(username)) {
             return R.fail("登录会话已过期，请重新登录");
         }
@@ -148,7 +155,7 @@ public class LoginController {
                 verified = TotpUtil.authorize(user.getTotpSecret(), code);
             }
         } else if ("SMS".equalsIgnoreCase(type) || "EMAIL".equalsIgnoreCase(type)) {
-            String redisKey = "mfa:code:" + type + ":" + mfaId;
+            String redisKey = RedisKeys.mfaCode(type, mfaId);
             String savedCode = redisTemplate.opsForValue().get(redisKey);
             if (StringUtils.hasText(savedCode) && savedCode.equals(code)) {
                 verified = true;
@@ -161,7 +168,7 @@ public class LoginController {
         }
 
         // 验证成功，移除临时 mfaId
-        redisTemplate.delete("mfa:login:" + mfaId);
+        redisTemplate.delete(RedisKeys.mfaLogin(mfaId));
 
         // 重新加载用户信息并构建 Authentication
         UserDetails userDetails = userDetailsService.loadUserByUsername(username);
@@ -205,21 +212,41 @@ public class LoginController {
         String mfaId = param.getMfaId();
         String type = param.getType(); // SMS, EMAIL
 
-        String username = redisTemplate.opsForValue().get("mfa:login:" + mfaId);
+        String username = redisTemplate.opsForValue().get(RedisKeys.mfaLogin(mfaId));
         if (!StringUtils.hasText(username)) {
             return R.fail("会话已过期");
         }
-        
-        // 生成验证码
+        String target = null;
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, username));
+        if ("EMAIL".equalsIgnoreCase(type)) {
+            if (user != null && StringUtils.hasText(user.getEmail())) {
+                target = user.getEmail();
+            } else {
+                log.warn("用户 [{}] 未绑定邮箱，无法发送验证码", username);
+                return R.fail("未绑定邮箱");
+            }
+        } else if ("SMS".equalsIgnoreCase(type)) {
+            if (user != null && StringUtils.hasText(user.getPhone())) {
+                target = user.getPhone();
+            } else {
+                log.warn("用户 [{}] 未绑定手机号，无法发送验证码", username);
+                return R.fail("未绑定手机号");
+            }
+        }
+        String limitMsg = rateLimiter.checkAndRecord(type, target);
+        if (limitMsg != null) {
+            return R.fail(limitMsg);
+        }
         String code = RandomUtil.randomNumbers(6);
         log.info("MFA验证码 [{} - {}]: {}", username, type, code);
-
-        // 存入 Redis 5分钟有效
-        String redisKey = "mfa:code:" + type + ":" + mfaId;
+        String redisKey = RedisKeys.mfaCode(type, mfaId);
         redisTemplate.opsForValue().set(redisKey, code, 5, TimeUnit.MINUTES);
+        if ("EMAIL".equalsIgnoreCase(type)) {
+            emailService.sendLoginCodeMail(target, code, 5);
+        } else if ("SMS".equalsIgnoreCase(type)) {
+            smsService.sendLoginCodeSms(target, code, 5);
+        }
 
-        // TODO: 实际发送短信或邮件
-        
         return R.ok();
     }
 

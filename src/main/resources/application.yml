@@ -3,6 +3,8 @@ server:
   forward-headers-strategy: framework
 
 spring:
+  profiles:
+    active: local
   application:
     name: authvs-server
   datasource:
@@ -20,6 +22,27 @@ spring:
       database: 0
       password: 123456
       timeout: 10000
+  mail:
+    host: smtp.xxxx.com
+    port: 465
+    username: xxx@xxx.com
+    password: password
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
+
+sms:
+  app-id: app-id
+  secret-key: key
+  sign: "【xxxx】"
+  ip: www.btom.cn
+  port: 8080
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml

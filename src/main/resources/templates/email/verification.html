@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>验证码</title>
+  <style>
+    body { margin: 0; padding: 0; background: #f5f7fa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #333; }
+    .container { max-width: 560px; margin: 24px auto; background: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.06); }
+    .header { padding: 20px 24px; background: linear-gradient(135deg, #4a90e2, #357bd8); color: #fff; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; }
+    .logo { width: 32px; height: 32px; border-radius: 8px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; }
+    .content { padding: 24px; }
+    .title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+    .desc { font-size: 14px; color: #666; margin-bottom: 20px; line-height: 1.7; }
+    .code-box { text-align: center; margin: 18px 0 8px; }
+    .code { display: inline-block; letter-spacing: 8px; padding: 14px 18px; font-size: 28px; font-weight: 700; background: #f0f7ff; color: #1f6fd6; border-radius: 12px; border: 1px solid #e6f2ff; }
+    .meta { font-size: 13px; color: #888; text-align: center; margin-bottom: 18px; }
+    .footer { padding: 18px 24px; font-size: 12px; color: #888; border-top: 1px solid #f0f0f0; background: #fafafa; }
+    .tips { margin-top: 6px; line-height: 1.7; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="brand">
+        <div class="logo">🛡️</div>
+        <div class="name" th:text="${appName}">AuthVs</div>
+      </div>
+    </div>
+    <div class="content">
+      <div class="title">您的登录验证码</div>
+      <div class="desc">为保障账户安全，请在规定时间内完成验证。该验证码仅用于本次登录验证。</div>
+      <div class="code-box">
+        <div class="code" th:text="${code}">123456</div>
+      </div>
+      <div class="meta">有效期：<span th:text="${expires}">5</span>分钟</div>
+      <div class="tips">
+        • 请勿将验证码转发给他人<br>
+        • 若非本人操作，请立即修改密码并联系管理员
+      </div>
+    </div>
+    <div class="footer">
+      本邮件为系统自动发送，请勿回复。如有疑问请联系管理员。
+    </div>
+  </div>
+</body>
+</html>
