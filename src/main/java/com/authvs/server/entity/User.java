@@ -27,6 +27,10 @@ public class User implements Serializable {
 
     private Integer userType; // 1-PORTAL, 2-ADMIN
 
+    private String totpSecret;
+
+    private Integer totpEnabled; // 0 or 1
+
     private Integer enabled; // 0 or 1
 
     private LocalDateTime createdAt;

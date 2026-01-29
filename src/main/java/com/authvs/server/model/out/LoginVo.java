@@ -8,4 +8,6 @@ import lombok.Data;
 public class LoginVo {
     private String token;
     private String redirectUrl;
+    private String state; // LOGGED_IN, MFA_REQUIRED
+    private String mfaId;
 }

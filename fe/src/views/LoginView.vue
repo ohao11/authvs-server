@@ -9,54 +9,78 @@
     </div>
 
     <form @submit.prevent="handleSubmit">
-      <input type="hidden" v-model="form.captchaKey" />
-      <div class="form-group">
-        <label for="username">用户名</label>
-        <input
-          id="username"
-          v-model="form.username"
-          class="form-control"
-          type="text"
-          placeholder="请输入用户名"
-          required
-          autofocus
-        />
-      </div>
-      <div class="form-group">
-        <label for="password">密码</label>
-        <input
-          id="password"
-          v-model="form.password"
-          class="form-control"
-          type="password"
-          placeholder="请输入密码"
-          required
-        />
-      </div>
-      <div class="form-group">
-        <label for="captcha">验证码</label>
-        <div class="captcha-row">
+      <div v-if="step === 'login'">
+        <input type="hidden" v-model="form.captchaKey" />
+        <div class="form-group">
+          <label for="username">用户名</label>
           <input
-            id="captcha"
-            v-model="form.captcha"
+            id="username"
+            v-model="form.username"
             class="form-control"
             type="text"
-            placeholder="请输入验证码"
+            placeholder="请输入用户名"
             required
-          />
-          <img
-            v-if="captchaImg"
-            :src="captchaImg"
-            class="captcha-img"
-            alt="验证码"
-            title="点击刷新验证码"
-            @click="refreshCaptcha"
+            autofocus
           />
         </div>
+        <div class="form-group">
+          <label for="password">密码</label>
+          <input
+            id="password"
+            v-model="form.password"
+            class="form-control"
+            type="password"
+            placeholder="请输入密码"
+            required
+          />
+        </div>
+        <div class="form-group">
+          <label for="captcha">验证码</label>
+          <div class="captcha-row">
+            <input
+              id="captcha"
+              v-model="form.captcha"
+              class="form-control"
+              type="text"
+              placeholder="请输入验证码"
+              required
+            />
+            <img
+              v-if="captchaImg"
+              :src="captchaImg"
+              class="captcha-img"
+              alt="验证码"
+              title="点击刷新验证码"
+              @click="refreshCaptcha"
+            />
+          </div>
+        </div>
       </div>
+
+      <div v-else-if="step === 'mfa'">
+        <div class="form-group">
+          <label for="mfaCode">双因子验证码</label>
+          <input
+            id="mfaCode"
+            v-model="form.mfaCode"
+            class="form-control"
+            type="text"
+            placeholder="请输入6位验证码"
+            maxlength="6"
+            required
+            autofocus
+          />
+          <div class="hint">请输入您 Google Authenticator 中的 6 位数字</div>
+        </div>
+      </div>
+
       <button class="btn" type="submit" :disabled="submitting">
-        {{ submitting ? "登录中..." : "登 录" }}
+        {{ submitting ? (step === 'login' ? "登录中..." : "验证中...") : (step === 'login' ? "登 录" : "验 证") }}
       </button>
+      
+      <div v-if="step === 'mfa'" class="text-center mt-2">
+        <a href="#" @click.prevent="resetLogin">返回登录</a>
+      </div>
     </form>
   </div>
 </template>
@@ -67,11 +91,15 @@ import { useRouter } from 'vue-router'
 
 const router = useRouter()
 
+const step = ref('login') // login, mfa
+const mfaId = ref('')
+
 const form = reactive({
   username: '',
   password: '',
   captcha: '',
-  captchaKey: ''
+  captchaKey: '',
+  mfaCode: ''
 })
 
 const captchaImg = ref('')
@@ -102,35 +130,88 @@ async function refreshCaptcha() {
   }
 }
 
+function resetLogin() {
+  step.value = 'login'
+  form.password = ''
+  form.captcha = ''
+  form.mfaCode = ''
+  error.value = ''
+  refreshCaptcha()
+}
+
+async function handleLogin() {
+  const res = await fetch('/api/login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      username: form.username,
+      password: form.password,
+      captcha: form.captcha,
+      captchaKey: form.captchaKey
+    })
+  })
+  const data = await res.json()
+  if (data.code === 200) {
+    const { state, token, redirectUrl, mfaId: id } = data.data
+    
+    if (state === 'MFA_REQUIRED') {
+      step.value = 'mfa'
+      mfaId.value = id
+      error.value = ''
+    } else {
+      handleSuccess(token, redirectUrl)
+    }
+  } else {
+    error.value = data.message || '登录失败'
+    await refreshCaptcha()
+  }
+}
+
+async function handleMfa() {
+  const res = await fetch('/api/login/mfa', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      mfaId: mfaId.value,
+      code: form.mfaCode
+    })
+  })
+  const data = await res.json()
+  if (data.code === 200) {
+    const { token, redirectUrl } = data.data
+    handleSuccess(token, redirectUrl)
+  } else {
+    error.value = data.message || '验证失败'
+  }
+}
+
+function handleSuccess(token, redirectUrl) {
+  if (token) {
+    localStorage.setItem('auth_token', token)
+  }
+  
+  if (redirectUrl) {
+    window.location.href = redirectUrl
+  } else {
+    router.push('/profile')
+  }
+}
+
 async function handleSubmit() {
   error.value = ''
   submitting.value = true
   try {
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(form)
-    })
-    const data = await res.json()
-    if (data.code === 200) {
-      const { token, redirectUrl } = data.data
-      if (token) {
-        localStorage.setItem('auth_token', token)
-      }
-      
-      if (redirectUrl) {
-        window.location.href = redirectUrl
-      } else {
-        router.push('/profile')
-      }
+    if (step.value === 'login') {
+      await handleLogin()
     } else {
-      error.value = data.message || '登录失败'
-      await refreshCaptcha()
+      await handleMfa()
     }
   } catch (e) {
-    error.value = '登录请求失败，请稍后重试'
+    error.value = '请求失败，请稍后重试'
     console.error(e)
   } finally {
     submitting.value = false
@@ -138,6 +219,10 @@ async function handleSubmit() {
 }
 
 onMounted(() => {
+  if (localStorage.getItem('auth_token')) {
+    router.push('/profile')
+    return
+  }
   refreshCaptcha()
 })
 </script>
@@ -216,16 +301,45 @@ onMounted(() => {
   background-color: #357abd;
 }
 
+.btn:disabled {
+  background-color: #a0c4e8;
+  cursor: not-allowed;
+}
+
 .alert {
-  padding: 12px;
-  margin-bottom: 20px;
+  padding: 10px;
   border-radius: 4px;
+  margin-bottom: 20px;
   font-size: 14px;
 }
 
 .alert-error {
   background-color: #fde8e8;
   color: #c53030;
-  border: 1px solid #fbd5d5;
+  border: 1px solid #f8b4b4;
+}
+
+.hint {
+  font-size: 12px;
+  color: #888;
+  margin-top: 5px;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.mt-2 {
+  margin-top: 10px;
+}
+
+a {
+  color: #4a90e2;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+a:hover {
+  text-decoration: underline;
 }
 </style>

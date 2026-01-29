@@ -23,6 +23,8 @@ public class UserVo implements Serializable {
 
     private Integer enabled;
 
+    private Integer totpEnabled;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
 }
