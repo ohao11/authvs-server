@@ -51,7 +51,7 @@ public class JpaRegisteredClientRepository implements RegisteredClientRepository
             return null; // Or throw exception, but returning null usually means not found
         }
 
-        Set<String> clientAuthenticationMethods = Set.of("client_secret_basic", "client_secret_post");
+        // Set<String> clientAuthenticationMethods = Set.of("client_secret_basic", "client_secret_post");
         Set<String> authorizationGrantTypes = StringUtils.commaDelimitedListToSet(oauthClient.getGrantTypes());
         Set<String> redirectUris = StringUtils.commaDelimitedListToSet(oauthClient.getRedirectUris());
         Set<String> postLogoutRedirectUris = StringUtils.commaDelimitedListToSet(oauthClient.getPostLogoutRedirectUris());
